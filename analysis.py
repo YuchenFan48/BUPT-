@@ -10,6 +10,9 @@ import csv
 import pkuseg
 import collections
 import re
+import seaborn as sns
+import matplotlib.pyplot as plt
+
 
 os.environ['TRANSFORMERS_CACHE'] = '/data/fyc'
 
@@ -216,7 +219,7 @@ def process_countries():
         df.to_csv('/data/fyc/test/cleaned_country.csv')
 
 
-def post_porcess_organizations():
+def post_process_organizations():
     with open('/data/fyc/test/organization.csv', 'r') as f:
         reader = csv.reader(f)
         cleaned_organizations = []
@@ -257,30 +260,266 @@ def load_data():
     path_cleaned_country = '/data/fyc/test/cleaned_country.csv'
     path_cleaned_hot_words = '/data/fyc/test/cleaned_hot_words.csv'
     path_cleaned_organization = '/data/fyc/test/cleaned_organization.csv'
+    path_cleaned_date = '/data/fyc/test/cleaned_date.csv'
+    path_url = '/data/fyc/test/url.csv'
     df_category = pd.read_csv(path_cleaned_category, encoding='utf-8')
     df_country = pd.read_csv(path_cleaned_country, encoding='utf-8')
     df_hot_words = pd.read_csv(path_cleaned_hot_words, encoding='utf-8')
     df_organization = pd.read_csv(path_cleaned_organization, encoding='utf-8')
-    return df_category, df_country, df_hot_words, df_organization
+    df_date = pd.read_csv(path_cleaned_date, encoding='utf-8')
+    urls = []
+    with open(path_url, 'r', encoding='gb2312', errors='replace') as f:
+        idx = 0
+        for line in f.readlines():
+            idx += 1
+            if idx == 2 or idx == 1:
+                continue
+            if idx == 530:
+                break
+            pos = line.find('h')
+            url = line[pos:]
+            urls.append(url)
+    df_url = pd.DataFrame(urls, columns=['url'])
+    df_url.to_csv('/data/fyc/test/cleaned_url.csv')
+    return df_category, df_country, df_hot_words, df_organization, df_date, df_url
 
 
-df = pd.read_csv('/data/fyc/test/data.csv',
-                 encoding='utf-8', encoding_errors='ignore')
-df['Length'] = df['Context'].fillna('').apply(len)
-Q1 = np.percentile(df['Length'], 10)
-Q3 = np.percentile(df['Length'], 95)
-df = df[df['Length'] >= int(Q1)]  # 记得>306
-df = df[df['Length'] <= int(Q3)]
-df = df.reset_index(drop=True)
-post_porcess_organizations()
-df_category, df_country, df_hot_words, df_organization = load_data()
-df["Category"] = df_category["Category"]
-df["Countries mentioned"] = df_country["Countries mentioned"]
-df["Top5-Hot-Words"] = df_hot_words["Top5-Hot-Words"]
-df["Organizations"] = df_organization["Organizations"]
-df = df[df['Length'] > 306].reset_index(drop=True)
-countries = df['Countries mentioned'].str.split(
-    ',').explode().unique().tolist()
+def analyze_countries(df):
+    countries = df['Countries mentioned'].str.split(
+        ',').explode().unique().tolist()
+    all_countries = []
+    for country in countries:
+        if country != 'Not mentioned':
+            country_list = country.split()
+        for item in country_list:
+            all_countries.append(item)
+    hash = collections.Counter(all_countries)
+    country_in_total = len(hash)
+    popular_country = [{k: v} for k, v in hash.items() if v >= 5]
+    df = pd.DataFrame(popular_country)
+    df = df.melt(var_name='Country', value_name='Count').dropna()
+    print(df)
+    sns.catplot(x='Country', y='Count', data=df, kind='bar')
+    plt.show()
 
 
-df.to_csv('/data/fyc/test/cleaned.csv')
+def process_data():
+    df = pd.read_csv('/data/fyc/test/data.csv',
+                     encoding='utf-8', encoding_errors='ignore')
+    df['Length'] = df['Context'].fillna('').apply(len)
+    Q1 = np.percentile(df['Length'], 10)
+    Q3 = np.percentile(df['Length'], 95)
+    df = df[df['Length'] >= int(Q1)]  # 记得>306
+    df = df[df['Length'] <= int(Q3)]
+    df = df.reset_index(drop=True)
+    df_category, df_country, df_hot_words, df_organization, df_date, df_url = load_data()
+    df["Category"] = df_category["Category"]
+    df["Countries mentioned"] = df_country["Countries mentioned"].fillna(
+        "Not mentioned")
+    df["Top5-Hot-Words"] = df_hot_words["Top5-Hot-Words"]
+    df["Organizations"] = df_organization["Organizations"]
+    df["URL"] = df_url["url"]
+    df = df[df['Length'] > 306].reset_index(drop=True)
+    df["Release Date"] = df_date["Date"]
+    df.to_csv('/data/fyc/test/cleaned.csv')
+    return df
+
+
+def analyze_countries(df):
+    countries = df['Countries mentioned'].str.split(
+        ',').explode().unique().tolist()
+    df_2023 = df[df['Release Date'].str.startswith('2023')]
+    countries_2023 = df_2023['Countries mentioned'].str.split(
+        ',').explode().unique().tolist()
+    df_2022 = df[df['Release Date'].str.startswith('2022')]
+    countries_2022 = df_2022['Countries mentioned'].str.split(
+        ',').explode().unique().tolist()
+    all_countries = []
+    all_countries_2023 = []
+    all_countries_2022 = []
+    for country in countries:
+        if country != 'Not mentioned':
+            country_list = country.split()
+        for item in country_list:
+            all_countries.append(item)
+    for country in countries_2023:
+        if country != 'Not mentioned':
+            country_list = country.split()
+        for item in country_list:
+            all_countries_2023.append(item)
+    for country in countries_2022:
+        if country != 'Not mentioned':
+            country_list = country.split()
+        for item in country_list:
+            all_countries_2022.append(item)
+    hash = collections.Counter(all_countries)
+    hash_2023 = collections.Counter(all_countries_2023)
+    hash_2022 = collections.Counter(all_countries_2022)
+    country_in_total = len(hash)
+    popular_country = [{k: v} for k, v in hash.items() if v >= 20]
+    popular_country_2023 = [{k: v} for k, v in hash_2023.items() if v >= 20]
+    popular_country_2022 = [{k: v} for k, v in hash_2022.items() if v >= 20]
+    df = pd.DataFrame(popular_country)
+    df_2023 = pd.DataFrame(popular_country_2023)
+    df_2022 = pd.DataFrame(popular_country_2022)
+    df = df.melt(var_name='Country', value_name='Count').dropna()
+    df_2023 = df_2023.melt(var_name='Country', value_name='Count').dropna()
+    df_2022 = df_2022.melt(var_name='Country', value_name='Count').dropna()
+    plt.rcParams['font.sans-serif'] = ['Songti SC']
+    plt.rcParams['axes.unicode_minus'] = False
+    ax1 = sns.barplot(x='Country', y='Count', data=df)
+    ax1.set_xticklabels(ax1.get_xticklabels(), size=4)
+    plt.title('Both 2023 and 2022')
+    plt.show()
+    ax2 = sns.barplot(x='Country', y='Count', data=df_2023)
+    ax2.set_xticklabels(ax2.get_xticklabels(), size=4)
+    plt.title('2023 only')
+    plt.show()
+    ax3 = sns.barplot(x='Country', y='Count', data=df_2022)
+    ax3.set_xticklabels(ax3.get_xticklabels(), size=4)
+    plt.title('2022 only')
+    plt.show()
+
+
+def analyze_organizations(df):
+    organizations = df['Organizations'].str.split(
+        ',').explode().unique().tolist()
+    df_2023 = df[df['Release Date'].str.startswith('2023')]
+    organizations_2023 = df_2023['Organizations'].str.split(
+        ',').explode().unique().tolist()
+    df_2022 = df[df['Release Date'].str.startswith('2022')]
+    organizations_2022 = df_2022['Organizations'].str.split(
+        ',').explode().unique().tolist()
+    all_organizations = []
+    all_organizations_2023 = []
+    all_organizations_2022 = []
+    for organization in organizations:
+        if organization != 'Not mentioned':
+            organization_list = organization.split()
+        for item in organization_list:
+            all_organizations.append(item)
+    for organization in organizations_2023:
+        if organizations != 'Not mentioned':
+            organization_list = organization.split()
+        for item in organization_list:
+            all_organizations_2023.append(item)
+    for organization in organizations_2022:
+        if organization != 'Not mentioned':
+            organization_list = organization.split()
+        for item in organization_list:
+            all_organizations_2022.append(item)
+    hash = collections.Counter(all_organizations)
+    hash_2023 = collections.Counter(all_organizations_2023)
+    hash_2022 = collections.Counter(all_organizations_2022)
+    organization_in_total = len(hash)
+    popular_organization = [{k: v} for k, v in hash.items() if v >= 15]
+    popular_organization_2023 = [{k: v}
+                                 for k, v in hash_2023.items() if v >= 10]
+    popular_organization_2022 = [{k: v}
+                                 for k, v in hash_2022.items() if v >= 8]
+    print(popular_organization)
+    df = pd.DataFrame(popular_organization)
+    df_2023 = pd.DataFrame(popular_organization_2023)
+    df_2022 = pd.DataFrame(popular_organization_2022)
+    df = df.melt(var_name='Organizations', value_name='Count').dropna()
+    df_2023 = df_2023.melt(var_name='Organizations',
+                           value_name='Count').dropna()
+    df_2022 = df_2022.melt(var_name='Organizations',
+                           value_name='Count').dropna()
+    plt.rcParams['font.sans-serif'] = ['Songti SC']
+    plt.rcParams['axes.unicode_minus'] = False
+    ax1 = sns.barplot(x='Organizations', y='Count', data=df)
+    ax1.set_xticklabels(ax1.get_xticklabels(), size=4)
+    plt.title('Both 2023 and 2022')
+    plt.show()
+    ax2 = sns.barplot(x='Organizations', y='Count', data=df_2023)
+    ax2.set_xticklabels(ax2.get_xticklabels(), size=4)
+    plt.title('2023 only')
+    plt.show()
+    ax3 = sns.barplot(x='Organizations', y='Count', data=df_2022)
+    ax3.set_xticklabels(ax3.get_xticklabels(), size=4)
+    plt.title('2022 only')
+    plt.show()
+
+
+def analyze_category(df):
+    dic = {"历史": 0, "文化": 0,
+           "旅游": 0, "教育": 0, "其他": 0}
+    dic_2023 = {"历史": 0, "文化": 0,
+                "旅游": 0, "教育": 0, "其他": 0}
+    dic_2022 = {"历史": 0, "文化": 0,
+                "旅游": 0, "教育": 0, "其他": 0}
+    category = ['历史', '文化', '旅游', '教育']
+    df['Category'] = df['Category'].apply(
+        lambda x: x if x in category else '其他')
+    df_2023 = df[df['Release Date'].str.startswith('2023')]
+    df_2023['Category'] = df['Category'].apply(
+        lambda x: x if x in category else '其他')
+    df_2022 = df[df['Release Date'].str.startswith('2022')]
+    df_2022['Category'] = df['Category'].apply(
+        lambda x: x if x in category else '其他')
+    category_counts = df['Category'].value_counts()
+    category_counts_2023 = df_2023['Category'].value_counts()
+    category_counts_2022 = df_2022['Category'].value_counts()
+    dic['历史'] += category_counts.get('历史', 0)
+    dic['文化'] += category_counts.get('文化', 0)
+    dic['旅游'] += category_counts.get('旅游', 0)
+    dic['教育'] += category_counts.get('教育', 0)
+    dic['其他'] += category_counts.get('其他', 0)
+    dic_2023['历史'] += category_counts_2023.get('历史', 0)
+    dic_2023['文化'] += category_counts_2023.get('文化', 0)
+    dic_2023['旅游'] += category_counts_2023.get('旅游', 0)
+    dic_2023['教育'] += category_counts_2023.get('教育', 0)
+    dic_2023['其他'] += category_counts_2023.get('其他', 0)
+    dic_2022['历史'] += category_counts_2022.get('历史', 0)
+    dic_2022['文化'] += category_counts_2022.get('文化', 0)
+    dic_2022['旅游'] += category_counts_2022.get('旅游', 0)
+    dic_2022['教育'] += category_counts_2022.get('教育', 0)
+    dic_2022['其他'] += category_counts_2022.get('其他', 0)
+    plt.rcParams['font.sans-serif'] = ['Songti SC']
+    plt.rcParams['axes.unicode_minus'] = False
+    df = pd.DataFrame(list(dic.items()), columns=[
+                      'Category', 'Count'])
+    df_2023 = pd.DataFrame(list(dic_2023.items()), columns=[
+                           'Category', 'Count'])
+    df_2022 = pd.DataFrame(list(dic_2022.items()), columns=[
+                           'Category', 'Count'])
+    ax1 = sns.lineplot(x='Category', y='Count', data=df,
+                       label='Both 2023 and 2022')
+    ax2 = sns.lineplot(x='Category', y='Count',
+                       data=df_2023, label='2023 only')
+    ax3 = sns.lineplot(x='Category', y='Count',
+                       data=df_2022, label='2022 only')
+    plt.legend(loc='best')
+    plt.show()
+
+
+def analyze_year(df):
+    post_2023 = len(df[df['Release Date'].str.startswith('2023')])
+    post_2022 = len(df[df['Release Date'].str.startswith('2022')])
+    dic = {"2022": post_2022, "2023": post_2023}
+    df = pd.DataFrame(list(dic.items()), columns=['Year', 'Count'])
+    sns.barplot(x='Year', y='Count', data=df)
+    plt.show()
+
+
+def split_category(df):
+    category = ['历史', '文化', '旅游', '教育']
+    df['Category'] = df['Category'].apply(
+        lambda x: x if x in category else '其他')
+    grouped_df = df.groupby('Category')
+    for name, group in grouped_df:
+        if name == '历史':
+            group.to_csv('/data/fyc/test/history.csv')
+        elif name == '文化':
+            group.to_csv('/data/fyc/test/culture.csv')
+        elif name == '旅游':
+            group.to_csv('/data/fyc/test/travel.csv')
+        elif name == '教育':
+            group.to_csv('/data/fyc/test/educatiom.csv')
+        else:
+            group.to_csv('/data/fyc/test/others.csv')
+
+
+df = process_data()
+split_category(df)
